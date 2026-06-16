@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'api_client.dart';
+import 'package:latihan/api_client.dart';
+
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MyApp());
 }
 
@@ -36,13 +38,14 @@ class Catatan {
     dibuatPada: DateTime.parse(m['dibuat_pada'] as String),
   );
 
-  Catatan copyWith({String? judul, String? isi, String? kategori}) => Catatan(
-    id: id,
-    judul: judul ?? this.judul,
-    isi: isi ?? this.isi,
-    kategori: kategori ?? this.kategori,
-    dibuatPada: dibuatPada,
-  );
+  Catatan copyWith({String? judul, String? isi, String? kategori}) =>
+      Catatan(
+        id: id,
+        judul: judul ?? this.judul,
+        isi: isi ?? this.isi,
+        kategori: kategori ?? this.kategori,
+        dibuatPada: dibuatPada,
+      );
 }
 
 class MyApp extends StatelessWidget {
@@ -51,13 +54,35 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Catatan App',
       debugShowCheckedModeBanner: false,
+      title: 'Catatan Mahasiswa',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorSchemeSeed: Colors.indigo,
         useMaterial3: true,
       ),
-      home: const HomePage(),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const HomePage(),
+      },
+      onGenerateRoute: (settings) {
+        switch (settings.name) {
+          case '/form':
+            return MaterialPageRoute(
+              builder: (_) => CatatanFormPage(
+                initial: settings.arguments as Catatan?,
+              ),
+            );
+
+          case '/detail':
+            return MaterialPageRoute(
+              builder: (_) => DetailCatatanPage(
+                catatan: settings.arguments as Catatan,
+              ),
+            );
+        }
+
+        return null;
+      },
     );
   }
 }
@@ -71,7 +96,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   late Future<List<Catatan>> _futureCatatan;
-  String _filterKategori = 'Semua';
 
   @override
   void initState() {
@@ -85,139 +109,44 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Catatan'),
-        actions: [
-          IconButton(
-            onPressed: _muatUlang,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: ['Semua', 'Umum', 'Tugas', 'Penting'].map((k) {
-                final selected = _filterKategori == k;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: Text(k),
-                    selected: selected,
-                    onSelected: (val) {
-                      setState(() => _filterKategori = k);
-                    },
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          Expanded(
-            child: FutureBuilder<List<Catatan>>(
-              future: _futureCatatan,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
-                if (snapshot.hasError) {
-                  final e = snapshot.error;
-                  final pesan = e is ApiException ? e.message : 'Terjadi kesalahan: $e';
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, size: 48),
-                        const SizedBox(height: 8),
-                        Text(pesan, textAlign: TextAlign.center),
-                        const SizedBox(height: 12),
-                        FilledButton(
-                          onPressed: _muatUlang,
-                          child: const Text('Coba lagi'),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-
-                var data = snapshot.data!;
-                if (_filterKategori != 'Semua') {
-                  data = data.where((c) => c.kategori == _filterKategori).toList();
-                }
-
-                if (data.isEmpty) {
-                  return const Center(child: Text('Belum ada catatan.'));
-                }
-
-                return ListView.builder(
-                  itemCount: data.length,
-                  itemBuilder: (context, index) {
-                    final c = data[index];
-                    return ListTile(
-                      title: Text(c.judul),
-                      subtitle: Text(c.kategori),
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => FormPage(initial: c),
-                          ),
-                        );
-                        _muatUlang();
-                      },
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
-                        onPressed: () => _hapus(c),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const FormPage()),
-          );
-          _muatUlang();
-        },
-        child: const Icon(Icons.add),
-      ),
+  Future<void> _bukaForm({Catatan? initial}) async {
+    await Navigator.pushNamed(
+      context,
+      '/form',
+      arguments: initial,
     );
+
+    _muatUlang();
   }
 
   Future<void> _hapus(Catatan c) async {
     final yakin = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Hapus Catatan'),
-        content: Text('Yakin ingin menghapus "${c.judul}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Batal'),
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Hapus Catatan?'),
+          content: Text(
+            '"${c.judul}" akan dihapus permanen.',
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Hapus', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, true),
+              child: const Text('Hapus'),
+            ),
+          ],
+        );
+      },
     );
 
     if (yakin == true) {
       try {
-        await ApiClient.instance.delete(c.id!);
+        await ApiClient.instance.delete(c.id!);          // <-- ApiClient
         if (!mounted) return;
         _muatUlang();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -231,33 +160,177 @@ class _HomePageState extends State<HomePage> {
       }
     }
   }
-}
 
-class FormPage extends StatefulWidget {
-  final Catatan? initial;
-  const FormPage({super.key, this.initial});
+  String _formatTanggal(DateTime d) {
+    return '${d.day}/${d.month}/${d.year}q';
+  }
 
   @override
-  State<FormPage> createState() => _FormPageState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Catatan Mahasiswa'),
+        actions: [
+          IconButton(
+            onPressed: _muatUlang,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: FutureBuilder<List<Catatan>>(
+        future: _futureCatatan,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState !=
+              ConnectionState.done) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          if (snapshot.hasError) {
+            final e = snapshot.error;
+            final pesan = e is ApiException ? e.message : 'Terjadi kesalahan: $e';
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline, size: 48),
+                  const SizedBox(height: 8),
+                  Text(pesan, textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  FilledButton(onPressed: _muatUlang, child: const Text('Coba lagi')),
+                ],
+              ),
+            );
+          }
+
+          final data = snapshot.data ?? [];
+
+          if (data.isEmpty) {
+            return const _EmptyState();
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: data.length,
+            itemBuilder: (context, index) {
+              final c = data[index];
+
+              return Card(
+                child: ListTile(
+                  title: Text(c.judul),
+                  subtitle: Column(
+                    crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                    children: [
+                      Text(c.kategori),
+                      Text(
+                        _formatTanggal(c.dibuatPada),
+                      ),
+                    ],
+                  ),
+                  onTap: () {
+                    Navigator.pushNamed(
+                      context,
+                      '/detail',
+                      arguments: c,
+                    );
+                  },
+                  trailing: Row(
+                    mainAxisSize:
+                    MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.edit,
+                        ),
+                        onPressed: () =>
+                            _bukaForm(
+                              initial: c,
+                            ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete,
+                          color: Colors.red,
+                        ),
+                        onPressed: () =>
+                            _hapus(c),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton:
+      FloatingActionButton.extended(
+        onPressed: () => _bukaForm(),
+        icon: const Icon(Icons.add),
+        label: const Text('Tambah'),
+      ),
+    );
+  }
 }
 
-class _FormPageState extends State<FormPage> {
+class CatatanFormPage extends StatefulWidget {
+  final Catatan? initial;
+
+  const CatatanFormPage({
+    super.key,
+    this.initial,
+  });
+
+  @override
+  State<CatatanFormPage> createState() =>
+      _CatatanFormPageState();
+}
+
+class _CatatanFormPageState
+    extends State<CatatanFormPage> {
   final _formKey = GlobalKey<FormState>();
-  final _judulCtrl = TextEditingController();
-  final _isiCtrl = TextEditingController();
-  String _kategori = 'Umum';
+
+  late final TextEditingController _judulCtrl;
+  late final TextEditingController _isiCtrl;
+
+  late String _kategori;
+
   bool _menyimpan = false;
 
-  bool get _isEdit => widget.initial != null;
+  final _kategoriOpsi = const [
+    'Kuliah',
+    'Tugas',
+    'Pribadi',
+    'Lainnya',
+  ];
+
+  bool get _isEdit =>
+      widget.initial != null;
 
   @override
   void initState() {
     super.initState();
-    if (_isEdit) {
-      _judulCtrl.text = widget.initial!.judul;
-      _isiCtrl.text = widget.initial!.isi;
-      _kategori = widget.initial!.kategori;
-    }
+
+    _judulCtrl = TextEditingController(
+      text: widget.initial?.judul ?? '',
+    );
+
+    _isiCtrl = TextEditingController(
+      text: widget.initial?.isi ?? '',
+    );
+
+    _kategori =
+        widget.initial?.kategori ??
+            'Kuliah';
+  }
+
+  @override
+  void dispose() {
+    _judulCtrl.dispose();
+    _isiCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _simpan() async {
@@ -270,7 +343,7 @@ class _FormPageState extends State<FormPage> {
           isi: _isiCtrl.text.trim(),
           kategori: _kategori,
         );
-        await ApiClient.instance.update(updated);
+        await ApiClient.instance.update(updated);     // <-- ApiClient
       } else {
         final baru = Catatan(
           judul: _judulCtrl.text.trim(),
@@ -278,7 +351,7 @@ class _FormPageState extends State<FormPage> {
           kategori: _kategori,
           dibuatPada: DateTime.now(),
         );
-        await ApiClient.instance.insert(baru);
+        await ApiClient.instance.insert(baru);        // <-- ApiClient
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -297,44 +370,189 @@ class _FormPageState extends State<FormPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_isEdit ? 'Edit Catatan' : 'Tambah Catatan')),
-      body: _menyimpan
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              TextFormField(
-                controller: _judulCtrl,
-                decoration: const InputDecoration(labelText: 'Judul'),
-                validator: (v) => v!.isEmpty ? 'Judul wajib diisi' : null,
-              ),
-              TextFormField(
-                controller: _isiCtrl,
-                decoration: const InputDecoration(labelText: 'Isi'),
-                maxLines: 3,
-              ),
-              DropdownButtonFormField<String>(
-                value: _kategori,
-                items: ['Umum', 'Tugas', 'Penting']
-                    .map((k) => DropdownMenuItem(value: k, child: Text(k)))
-                    .toList(),
-                onChanged: (v) => setState(() => _kategori = v!),
-                decoration: const InputDecoration(labelText: 'Kategori'),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: _simpan,
-                  child: const Text('Simpan'),
-                ),
-              ),
-            ],
-          ),
+      appBar: AppBar(
+        title: Text(
+          _isEdit
+              ? 'Edit Catatan'
+              : 'Tambah Catatan',
         ),
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding:
+          const EdgeInsets.all(16),
+          children: [
+            TextFormField(
+              controller: _judulCtrl,
+              decoration:
+              const InputDecoration(
+                labelText: 'Judul',
+                border:
+                OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null ||
+                    value.trim().isEmpty) {
+                  return 'Judul wajib diisi';
+                }
+
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField(
+              value: _kategori,
+              decoration:
+              const InputDecoration(
+                border:
+                OutlineInputBorder(),
+                labelText: 'Kategori',
+              ),
+              items: _kategoriOpsi
+                  .map(
+                    (e) =>
+                    DropdownMenuItem(
+                      value: e,
+                      child: Text(e),
+                    ),
+              )
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  _kategori = value!;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _isiCtrl,
+              maxLines: 5,
+              decoration:
+              const InputDecoration(
+                labelText: 'Isi',
+                border:
+                OutlineInputBorder(),
+              ),
+              validator: (value) {
+                if (value == null ||
+                    value.trim().isEmpty) {
+                  return 'Isi wajib diisi';
+                }
+
+                return null;
+              },
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              onPressed:
+              _menyimpan
+                  ? null
+                  : _simpan,
+              icon: _menyimpan
+                  ? const SizedBox(
+                width: 18,
+                height: 18,
+                child:
+                CircularProgressIndicator(
+                  strokeWidth: 2,
+                ),
+              )
+                  : const Icon(
+                Icons.save,
+              ),
+              label: Text(
+                _isEdit
+                    ? 'Update'
+                    : 'Simpan',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class DetailCatatanPage
+    extends StatelessWidget {
+  final Catatan catatan;
+
+  const DetailCatatanPage({
+    super.key,
+    required this.catatan,
+  });
+
+  String _formatTanggal(DateTime d) {
+    return '${d.day}/${d.month}/${d.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title:
+        const Text('Detail Catatan'),
+      ),
+      body: Padding(
+        padding:
+        const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment:
+          CrossAxisAlignment.start,
+          children: [
+            Text(
+              catatan.judul,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight:
+                FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Chip(
+              label:
+              Text(catatan.kategori),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Dibuat: ${_formatTanggal(catatan.dibuatPada)}',
+            ),
+            const Divider(height: 30),
+            Text(
+              catatan.isi,
+              style: const TextStyle(
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState
+    extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment:
+        MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.note_alt_outlined,
+            size: 80,
+            color: Colors.grey,
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Belum ada catatan',
+          ),
+        ],
       ),
     );
   }
